@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -23,7 +24,7 @@ type User struct {
 	ID 			primitive.ObjectID	`json:"_id,omitempty" bson:"_id,omitempty"`
 	Name 		string 				`json:"name"`
 	Email		string 				`json:"email"`
-	Password	string 				`json:"password"`
+	Password	string 				`json:"-"`
 }
 
 type Post struct {
@@ -75,15 +76,16 @@ func userHandler(w http.ResponseWriter, r *http.Request) {
 
     switch r.Method {
     case "GET":
-		userId, _ := primitive.ObjectIDFromHex(r.URL.Path[7:])
-		fmt.Println(userId)
+		userId, _ := primitive.ObjectIDFromHex(r.URL.Path[7:24+4])
 
 		filter := bson.D{{"_id", userId}}
 		var profile User
 
 		err := db.Collection("users").FindOne(ctx, filter).Decode(&profile)
 		if err != nil {
-			log.Fatal(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"message": "` + err.Error() + `"}`))
+			return
 		}
 
 		json.NewEncoder(w).Encode(profile)
@@ -97,7 +99,9 @@ func userHandler(w http.ResponseWriter, r *http.Request) {
 
 		res, err := db.Collection("users").InsertOne(ctx, newUser)
         if err != nil {
-			log.Fatal(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"message": "` + err.Error() + `"}`))
+			return
 		}
 		
         json.NewEncoder(w).Encode(res)
@@ -116,15 +120,17 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 
     switch r.Method {
     case "GET":
-		postId, _ := primitive.ObjectIDFromHex(r.URL.Path[7:])
-		fmt.Println(postId)
+		postId, _ := primitive.ObjectIDFromHex(r.URL.Path[7:24+7])
+		fmt.Println(r.URL.Path[7:24+7])
 
 		filter := bson.D{{"_id", postId}}
 		var post Post
 
 		err := db.Collection("posts").FindOne(ctx, filter).Decode(&post)
 		if err != nil {
-			log.Fatal(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"message": "` + err.Error() + `"}`))
+			return
 		}
 
 		json.NewEncoder(w).Encode(post)
@@ -135,7 +141,9 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 
 		res, err := db.Collection("posts").InsertOne(ctx, newPost)
         if err != nil {
-			log.Fatal(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"message": "` + err.Error() + `"}`))
+			return
 		}
 		
         json.NewEncoder(w).Encode(res)
@@ -154,14 +162,32 @@ func userPostHandler(w http.ResponseWriter, r *http.Request) {
 
     switch r.Method {
     case "GET":
-		userId, _ := primitive.ObjectIDFromHex(r.URL.Path[13:])
+		var page int
+		
+		query := r.URL.Query()
+		if val, ok := query["page"]; ok {
+			page,_ = strconv.Atoi(val[0])
+		}
+
+		skip := int64(page*5)
+		limit := int64(5)
+
+		opts := options.FindOptions {
+			Skip: &skip,
+			Limit: &limit,
+		}
+
+		userId, _ := primitive.ObjectIDFromHex(r.URL.Path[13:24+13])
+		fmt.Println(r.URL.Path[13:24])
 
 		filter := bson.D{{"creator", userId}}
 		var posts []Post
 
-		cursor, err := db.Collection("posts").Find(ctx, filter)
+		cursor, err := db.Collection("posts").Find(ctx, filter, &opts)
 		if err != nil {
-			log.Fatal(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"message": "` + err.Error() + `"}`))
+			return
 		}
 
 		defer cursor.Close(ctx)
@@ -187,9 +213,19 @@ func main() {
 
 	connectDb()
 	
+	http.HandleFunc("/users/", userHandler)
 	http.HandleFunc("/users", userHandler)
+
+	http.HandleFunc("/posts/users/", userPostHandler)
 	http.HandleFunc("/posts/users", userPostHandler)
+
+	http.HandleFunc("/posts/", postHandler)
 	http.HandleFunc("/posts", postHandler)
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+        w.Write([]byte(`{"message": "not found"}`))
+	})
 
 	log.Fatal(http.ListenAndServe(":8000", nil))
 
