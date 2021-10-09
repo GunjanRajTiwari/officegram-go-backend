@@ -39,8 +39,7 @@ type Post struct {
 var db *mongo.Database
 
 func connectDb() {
-	// clientOptions := options.Client().ApplyURI("mongodb://127.0.0.1:27017")
-	clientOptions := options.Client().ApplyURI("mongodb+srv://gunjan:gunjan321@namesclash.qtwfp.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+	clientOptions := options.Client().ApplyURI("mongodb://127.0.0.1:27017")
 	client, err := mongo.NewClient(clientOptions)
 
 	if err != nil {
@@ -67,6 +66,13 @@ func connectDb() {
 }
 
 
+// ------- HELPERS --------- //
+func encrypt(s string) string {
+	hash := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(hash[0:])
+}
+
+
 // ------- HANDLERS --------- //
 
 // User Handlers
@@ -76,7 +82,7 @@ func userHandler(w http.ResponseWriter, r *http.Request) {
 
     switch r.Method {
     case "GET":
-		userId, _ := primitive.ObjectIDFromHex(r.URL.Path[7:24+4])
+		userId, _ := primitive.ObjectIDFromHex(r.URL.Path[7:24+7])
 
 		filter := bson.D{{"_id", userId}}
 		var profile User
@@ -94,8 +100,7 @@ func userHandler(w http.ResponseWriter, r *http.Request) {
 		var newUser User
 		json.NewDecoder(r.Body).Decode(&newUser)
 
-		hash := sha256.Sum256([]byte(newUser.Password))
-		newUser.Password = hex.EncodeToString(hash[0:])
+		newUser.Password = encrypt(newUser.Password)
 
 		res, err := db.Collection("users").InsertOne(ctx, newUser)
         if err != nil {
@@ -178,7 +183,6 @@ func userPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		userId, _ := primitive.ObjectIDFromHex(r.URL.Path[13:24+13])
-		fmt.Println(r.URL.Path[13:24])
 
 		filter := bson.D{{"creator", userId}}
 		var posts []Post
