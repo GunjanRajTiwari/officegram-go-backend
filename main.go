@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -63,7 +65,9 @@ func connectDb() {
 	db = client.Database("officegram")
 }
 
+
 // ------- HANDLERS --------- //
+
 // User Handlers
 func userHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
@@ -87,6 +91,9 @@ func userHandler(w http.ResponseWriter, r *http.Request) {
     case "POST":
 		var newUser User
 		json.NewDecoder(r.Body).Decode(&newUser)
+
+		hash := sha256.Sum256([]byte(newUser.Password))
+		newUser.Password = hex.EncodeToString(hash[0:])
 
 		res, err := db.Collection("users").InsertOne(ctx, newUser)
         if err != nil {
@@ -174,17 +181,16 @@ func userPostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 
-
+// -------- START -----/
 func main() {
 	fmt.Println("Welcome to Golang Rest API")
 
 	connectDb()
 	
-	http.HandleFunc("/users/", userHandler)
-	http.HandleFunc("/posts/users/", userPostHandler)
-	http.HandleFunc("/posts/", postHandler)
+	http.HandleFunc("/users", userHandler)
+	http.HandleFunc("/posts/users", userPostHandler)
+	http.HandleFunc("/posts", postHandler)
 
 	log.Fatal(http.ListenAndServe(":8000", nil))
-
 
 }
